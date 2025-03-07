@@ -1,0 +1,29 @@
+                     Installing and Executing GENPREP
+                     --------------------------------
+
+Once you have RECEIVEd the 4 datasets that comprise GENPREP there are
+some steps that need to be taken in order to make it available to users.
+
+The recommended step-by-step process is as follows.
+
+
+1) Decide if you want to include the panel library, message library and
+   Rexx code in the TSO signon procedure or make them available via
+   LIBDEFS.
+
+2) Change the Rexx exec defaults for the panel library and message
+   library to the location decided upon in setp 1.
+
+3) Optionally copy the UCBSUBR load module into a load module that is
+   accessible to the TSO seesion.
+
+4) Optionally add an option to an ISPF panel to allow easier access to
+   GENPREP
+
+Note: UCBSUBR is only used to check to see if a disk volume is online
+      it really isn't needed if you are using only catalogued dataset.
+      Even if you do use a volume serial number and UCBSUBR isn't
+      installed the exec will still work by trying to allocate a temporary
+      dataset on the volume. This is fine if the volume is online and
+      you have access to it, however, if the volume isn't online the
+      operator may have to reply to a WTO.

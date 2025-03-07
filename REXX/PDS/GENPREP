@@ -1,0 +1,394 @@
+/* rexx */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/*                        REXX Exec : GENPREP                        */
+/*                                                                   */
+/*  Description : Generate ISPPREP commands for prepping ISPF panels */
+/*                It will generate the ISPPREP commands for all      */
+/*                panels in the input library, one particular panel  */
+/*                in the input library or a generic match for panels */
+/*                in the input libraraies                            */
+/*                                                                   */
+/*  Created on : 5 Aug 2023                                          */
+/*  Created by : Kevin Ferguson                                      */
+/*             : Userid MIT001                                       */
+/*             : Using ABBYDALE.PROD.REXX(GENPREP)                   */
+/*                                                                   */
+/*  Called by : Nothing                                              */
+/*                                                                   */
+/*  Calls : MEMMATCH, ISPPREP, LM commands, VALIDVOL, SYSDSN         */
+/*          LISTDSI                                                  */
+/*                                                                   */
+/*  Panels Used : ASLGPP01                                           */
+/*                                                                   */
+/*  Change Activity :                                                */
+/*                                                                   */
+/*                ©Copyright of Abbydale Systems LLC.                */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
+Parse Arg Help         /* Check for Help */
+signal on halt         /* attention key      */
+dialogid = sysvar(sysicmd)
+parse source Exec_String
+excnme = word(Exec_String,3)
+If SYSVAR("SYSISPF")<>"ACTIVE" then do
+   Say "ISPF must be active to use "GENPREP
+   exit(16)
+end
+address ispexec "addpop"
+address ISPEXEC "VGET (ZPREPIN ZPREPOUT RPOV STAV) PROFILE"
+address ISPEXEC "LIBDEF ISPPLIB DATASET" ,
+                "ID('ABBYDALE.DEVL.ISPPLIB')"
+Address TSO "altlib activate application(EXEC)" ,
+       "dataset('ABBYDALE.GENPREP.REXX') uncond quiet"
+cur = "ZPREPIN"
+reshow:
+address ISPEXEC "DISPLAY PANEL(ASLGPP01) CURSOR("cur")"
+if rc  =  8 then signal leave
+address ISPEXEC "VPUT (ZPREPIN ZPREPOUT RPOV STAV) PROFILE"
+if l = "/" then do
+   lcnt = 1
+   lline.lcnt  = "**** Genprep Started ****"
+   lcnt = lcnt + 1
+   lx = "Y"
+end
+else do
+   lx = "N"
+end
+tx = "Y"
+if t <>  "/" then tx = "N"
+ZIn = Strip(ZPREPIN,b,"'")
+ZOut = Strip(ZPREPOUT,b,"'")
+VIN = ", "
+LMVIN = ""
+memichk = ""
+memochk = ""
+if VLIN <> "" then do
+   msg = 'Checking for input volume 'vlin
+        Call LogIt
+   validvol VLIN
+   if rc <> 0 then do
+      ZEDSMSG = 'Volume Invalid'
+      ZEDLMSG = 'Input volume 'VLIN' invalid or not online'
+      ZDLREF = 'Y'
+      Address ISPEXEC "SETMSG MSG(ISRZ001)"
+      cur = "VLIN"
+      signal reshow
+   end
+   "ALLOC F(ASLGPPIN) DA('"Zin"') SHR REUS VOLUME("VLIN")"
+   if rc = 12 then do
+      ZEDSMSG = 'Dataset not found'
+      ZEDLMSG = 'Dataset 'Zin' not found on' VLIN
+      cur = "ZPREPIN"
+      signal setdsn
+   end
+   "FREE F(ASLGPPIN)"
+   VIN = " INVOL("vlin"), "
+   LMVIN = " VOLUME("vlin"), "
+   memichk = VLIN "NOCHECK"
+end
+VOUT = ", "
+if VLOUT <> "" then do
+   if vlout <> zlin then do
+      msg = 'checking for output volume 'vlout
+           Call LogIt
+      validvol VLOUT
+      if rc <> 0 then do
+         ZEDSMSG = 'Volume Invalid'
+         ZEDLMSG = 'Output volume 'VLOUT' invalid or not online'
+         ZDLREF = 'Y'
+         Address ISPEXEC "SETMSG MSG(ISRZ001)"
+         cur = "VLOUT"
+         signal reshow
+      end
+      "ALLOC F(ASLGPPIN) DA('"Zout"') SHR REUS VOLUME("VLOUT")"
+      if rc = 12 then do
+         ZEDSMSG = 'Dataset not found'
+         ZEDLMSG = 'Dataset 'Zout' not found on' VLOUT
+         cur = "ZPREPOUT"
+         signal setdsn
+      end
+      "FREE F(ASLGPPIN)"
+   end
+   VOUT = " OUTVOL("vlout"), "
+   memochk = VLOUT "NOCHECK"
+end
+if VLIN = "" then do
+   msg = 'Searching for input dsn 'zin
+        Call LogIt
+   zin = "'"||zin||"'"
+   if SYSDSN(zin) <> "OK" then do
+      ZEDSMSG = 'Dataset not found'
+      ZEDLMSG = 'Dataset 'Zin' not found'
+      cursor = "ZPREPIN"
+setdsn:
+      ZDLREF = 'Y'
+      Address ISPEXEC "SETMSG MSG(ISRZ001)"
+      signal reshow
+   end
+end
+If VLOUT = "" then do
+   zout = "'"||zout||"'"
+   msg = 'Searching for output dsn 'zout
+   Call LogIt
+   if SYSDSN(zout) <> "OK" then do
+      ZEDSMSG = 'Dataset not found'
+      ZEDLMSG = 'Dataset 'Zout' not found'
+      cur = "ZPREPOUT"
+      signal setdsn
+   end
+end
+zin = strip(zin,b,"'")
+zout = strip(zout,b,"'")
+if zin = zout then do
+   if vlin = vlout then do
+samedsn:
+      ZEDSMSG = 'Same dataset name'
+      ZEDLMSG = 'Dataset 'Zin' specified for both input and output'
+      cursor = "ZPREPIN"
+      signal setdsn
+   end
+   else do
+      if vlin = "" then do
+         TrapON=OutTrap('ON')
+         DSN_STATUS = LISTDSI(''''zin'''' smsinfo)
+         TrapOn=OutTrap('OFF')
+         ivol = sysvolume
+      end
+      else do
+         ivol = vlin
+      end
+      if vlout = "" then do
+         TrapON=OutTrap('ON')
+         DSN_STATUS = LISTDSI(''''zout'''' smsinfo)
+         TrapOn=OutTrap('OFF')
+         ovol = sysvolume
+      end
+      else do
+         ovol = vlout
+      end
+      if ivol = ovol then signal samedsn
+   end
+end
+replace = "NOREPL, "
+If R = "/" then replace = "REPLACE, "
+stats = "NOSTATS "
+If S = "/" then stats = "STATS "
+TrapOn=OutTrap('OFF')
+lst = "        "
+lm = "Y"
+om = "N"
+if inmemb = "" then do
+   inmemb = "*"
+   lm = "N"
+end
+if inmemb <> "*" then do
+   msg = 'Validating member name(s) 'inmemb
+   Call LogIt
+   if pos("%",inmemb) > 0 then do
+      ZEDLMSG = 'Invalid member name 'inmemb
+      cur = "INMEMB"
+      Invalid:
+      ZEDSMSG = 'Invalid member'
+      ZDLREF = 'Y'
+      Address ISPEXEC "VPUT (ZDLMSG ZDLMSG) SHARED"
+      Address ISPEXEC "SETMSG MSG(ISRZ001)"
+      signal reshow
+   end
+   zin = strip(zin,b,"'")
+   msg = 'Checking for members matching 'inmemb 'in 'zin
+   Call LogIt
+   memmatch zin inmemb memichk
+   if rc <> 0 then do
+      ZEDSMSG = 'No member match'
+      ZEDLMSG = 'Member 'inmemb' not matched'
+      cur = "INMEMB"
+      signal setdsn
+   end
+   if pos("*",inmemb) > 1 then do
+      inmemb = Substr(inmemb,1,pos("*",inmemb))
+      lst = Substr(inmemb,1,pos("*",inmemb)-1)
+      lm = "Y"
+   end
+   else do
+      lm = "N"
+   end
+end
+if outmemb <> "" then do
+   if pos("*",outmemb) > 0 then do
+      if pos("*",inmemb) = 0 then do
+         ZEDSMSG = 'Out member error'
+         ZEDLMSG = "Cannot be generic when in member isn't"
+         cur = "ZPREPOUT"
+         signal setdsn
+      end
+      if pos("*", inmemb) <> 0 then do
+         if length(outmemb) <> length(inmemb) then do
+            ZEDSMSG = 'Out member error'
+            ZEDLMSG = 'Length error. Member name lengths must be equal'
+            cur = "ZPREPOUT"
+            signal setdsn
+         end
+         if pos("%",outmemb) > 0 then do
+            cur = "OUTMEMB"
+            ZEDLMSG = 'Invalid member name 'outmemb
+            signal invalid
+         end
+         if outmemb <> "*" then do
+            outmemb = substr(outmemb,1,pos("*",outmemb)-1)
+            om = "Y"
+         end
+      end
+   end
+end
+zout = strip(zout,b,"'")
+if lm = "N" then do
+   msg = 'Prepping 'inmemb
+   Call LogIt
+   myparm = "PARM(INPAN('"||zin||"("||inmemb||")')"
+   myparm = myparm||vin||"OUTPAN('"zout"("inmemb")')"
+   myparm = myparm||vout||replace||stats||", EXEC)"
+   address ISPEXEC "SELECT PGM(ISPPREP) "myparm
+   if rc = 4 then do
+notplaced:
+      ZEDSMSG = 'Not replaced'
+      ZEDLMSG = 'Member 'INMEEMB' not converted/replaced'
+      cur = "INMEMB"
+      signal setdsn
+   end
+   else do
+converted:
+      msg = inmemb 'converted'
+      call LogIt
+      ZEDSMSG = 'Member converted'
+      ZEDLMSG = 'Member 'INMEEMB' converted'
+      cur = "INMEMB"
+      signal setdsn
+   end
+end
+ISPEXEC "LMINIT DATAID(RES) DATASET('"zin"')" lmvin " ENQ(SHRW)"
+ISPEXEC "LMOPEN DATAID("RES") OPTION(INPUT)"
+conv = 0
+nocv = 0
+norep = 0
+tots = 0
+lastone = ""
+lmrc = 0
+msg = 'Processing member list of 'zin
+Call LogIt
+do while lmrc < 8
+   kmem = "PATTERN("inmemb")"
+   ISPEXEC "LMMLIST DATAID("RES") MEMBER(lst) OPTION(LIST),
+           STATS(YES)" kmem
+   lmrc = rc
+   if lst = lastone then leave
+   tots = tots + 1
+   lastone = lst
+   if U = "/" then do
+      if zluser <> zuser then do
+         msg = zuser 'not matched for member 'lst
+         Call LogIt
+         lmrc = 0
+         iterate
+      end
+   end
+   msg= 'Prepping 'lst
+   Call LogIt
+   if om = "Y" then do
+      endof = substr(lst,length(outmemb)+1,8-Length(outmemb))
+      omemb = outmemb||endof
+   end
+   else do
+      omemb = lst
+   end
+   msg = 'prepping 'lst 'as' omemb
+   Call LogIt
+   myparm = "PARM(INPAN('"||zin||"("||lst||")')"
+   myparm = myparm||vin||"OUTPAN('"zout"("omemb")')"
+   myparm = myparm||vout||replace||stats||")"
+   address ISPEXEC "SELECT PGM(ISPPREP) "myparm
+   select
+   when rc = 0 then do
+      msg = lst 'converted'
+      Call LogIt
+      conv = conv + 1
+   end
+   when rc = 4 then do
+      memmatch zout lst memochk
+      if rc = 0 then do
+         msg = lst 'not converted'
+         Call LogIt
+         nocv = nocv + 1
+      end
+      else do
+         msg = lst 'not replaced in' zout
+         Call LogIt
+         norep = norep + 1
+      end
+   end
+   when rc = 8 then do
+      msg = 'Error converting member 'lst
+      Call LogIt
+      nocv = nocv + 1
+   end
+   otherwise nop
+   end
+   lmrc = 0
+end
+ISPEXEC "LMCLOSE DATAID("RES")"
+ISPEXEC "LMFREE DATAID("RES")"
+ZEDSMSG = conv 'Members converted'
+msg = conv 'of 'tots 'members converted.'
+Call LogIt
+if norep > 0 then do
+   ZEDSMSG = 'Converted with errors'
+   msg = msg|| norep ||' not replaced.'
+   Call LogIt
+end
+if nocv > 0 then do
+   ZEDSMSG = 'Converted with errors'
+   msg = msg|| nocv ||' not converted'
+   Call LogIt
+end
+ZEDLMSG = msg
+cur = "INMEMB"
+signal setdsn
+leave:
+if lx = "Y" then do
+   lcnt = lcnt - 1
+   do x = 1 to lcnt
+      say lline.x
+   end
+end
+address ispexec "rempop"
+address ISPEXEC "LIBDEF ISPPLIB"
+address ISPEXEC "VGET ASLUCBR PROFILE"
+if ASLUCBR <> "UCBSUBR" then do
+   address ISPEXEC "VERASE ASLUCBR PROFILE"
+end
+address TSO "altlib deact app(exec)"
+return
+/*-------------------------------------------------------------------*/
+/*                        Trap HALT Condition                        */
+/*-------------------------------------------------------------------*/
+halt:
+say "HALT acknowledged in line" sigl
+say "Cleanup processing in progress"
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                          Call LogIt Subroutine                    */
+/*-------------------------------------------------------------------*/
+LogIt:
+if tx = "Y" then do
+   say msg
+end
+if lx = "Y" then do
+   lline.lcnt = msg
+   lcnt = lcnt + 1
+end
+return
+/*-------------------------------------------------------------------*/
+/*                          End of GENPREP                           */
+/*-------------------------------------------------------------------*/

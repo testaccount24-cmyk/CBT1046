@@ -1,0 +1,208 @@
+/* rexx */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/*                       REXX Exec : VALIDVOL                        */
+/*                                                                   */
+/*  Description : Validate a passed volume serial number             */
+/*                                                                   */
+/*  Created on : 14 Feb 2021                                         */
+/*  Created by : KEVIN FERGUSON                                      */
+/*             : Userid(MIT001)                                      */
+/*             : using ABBYDALE.DEVL.REXX(VALIDVOL)                  */
+/*                                                                   */
+/*  Called by : XMT                                                  */
+/*                                                                   */
+/*  Calls : LISTDSI                                                  */
+/*                                                                   */
+/*  Change Activity :                                                */
+/*                                                                   */
+/*                ©Copyright of Abbydale Systems LLC.                */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
+pee = ''
+signal on halt                   /* attention key       */
+valid = 8                        /* Set default return code */
+parse upper arg volser
+if volser = "" then do
+   do while volser = ""
+   Say 'Enter volser to validate. (use <QUIT> to terminate)'
+   parse upper pull volser
+   if volser = '<QUIT>' then exit
+   if LENGTH(volser) <> 6 then do
+      volser = ""
+      say 'Invalid volume serial number length. Re-enter'
+   end
+   end
+end
+if volser = "?" then do
+   call disp_help
+   exit(4)
+end
+if LENGTH(volser) <> 6 then do
+   say 'Invalid volume serial number length'
+   exit(valid)
+end
+MyDsn=finddsn()
+If pos('(',MyDsn)>0 then Do
+   MyDsn = SubStr(MyDsn,2,pos('(',MyDsn)-2)
+end
+prog = "UCBSUBR"
+address ISPEXEC "VGET (ASLUCBR) PROFILE"
+if rc = 8 then do
+   FINDMOD prog
+   if rc = 0 then do
+       ASLUCBR = prog
+   end
+   else do
+       ASLUCBR = "**Missing**"
+   end
+   address ISPEXEC "VPUT (ASLUCBR) PROFILE"
+end
+if ASLUCBR = "UCBSUBR" then do
+   count = 0
+   online = 0
+   offline = 0
+   out =
+   onl = x2b(80)
+   do while getUCB() = 0
+      temp = substr(x,4,1)
+      temp = c2x(temp)
+      count = count + 1
+      avail = BitAnd(x2b(temp),onl)
+      if avail > 0 Then do
+   /*    say substr(X,29,6)  */
+         if substr(X,29,6) = volser then do
+             exit(0)
+         end
+      end
+   end
+   exit(12)
+exit
+signal on novalue                /* un-initialized vars */
+ivol = 'VOLUME('volser')'
+dsn = "SYS1.VVDS.V"volser
+rc = 0
+TrapON=OutTrap('ON')
+DSN_STATUS = LISTDSI(''''dsn'''' ivol  smsinfo)
+/* "ALLOC F(ASLTEMP) DATASET('"userid()".ASLTEMP')" ,
+       "NEW VOL("volser") UNIT(SYSALLDA)",
+       "LIKE('"mydsn"') SPACE(1)"              */
+if sysdsorg = "" then rc = 8
+valid = rc
+/* if valid = 0 then do
+   "FREE F(ASLTEMP)"
+   "DEL '"userid()".ASLTEMP'"
+end   */
+TrapON=OutTrap('OFF')
+exit(valid)
+finddsn:
+Procedure
+answer='* UNKNOWN *'                   /* assume disaster            */
+Parse Source . . name dd ds .          /* get known info             */
+Call listdsi(dd 'FILE')                /* get 1st ddname from file   */
+Numeric digits 10                      /* allow up to 7FFFFFFF       */
+If name = '?' Then                     /* if sequential exec         */
+  answer=''''ds''''                    /* use info from parse source */
+Else                                   /* now test for members       */
+  If sysdsn(''''sysdsname'('name')''')='OK' Then /* if in 1st ds     */
+    answer=''''sysdsname'('name')'''   /* go no further              */
+  Else                                 /* hooboy! Lets have some fun!*/
+    Do                                 /* scan tiot for the ddname   */
+      tiotptr=24+ptr(12+ptr(ptr(ptr(16)))) /* get ddname array       */
+      tioelngh=c2d(stg(tiotptr,1))     /* length of 1st entry        */
+      Do Until tioelngh=0 | tioeddnm = dd /* scan until dd found     */
+        tioeddnm=strip(stg(tiotptr+4,8)) /* get ddname from tiot     */
+        If tioeddnm <> dd Then         /* if not a match             */
+          tiotptr=tiotptr+tioelngh     /* advance to next entry      */
+        tioelngh=c2d(stg(tiotptr,1))   /* length of next entry       */
+      End
+      If dd=tioeddnm Then              /* if we found it, loop through
+                                          the data sets doing an swareq
+                                          for each one to get the
+                                          dsname                     */
+        Do Until tioelngh=0 | stg(4+tiotptr,1)<> " "
+          tioejfcb=stg(tiotptr+12,3)
+          jfcb=swareq(tioejfcb)        /* convert SVA to 31-bit addr */
+          dsn=strip(stg(jfcb,44))      /* dsname JFCBDSNM            */
+          vol=storage(d2x(jfcb+118),6) /* volser JFCBVOLS (not used) */
+          If sysdsn(''''dsn'('name')''')='OK' Then /* found it?      */
+            Leave                      /* we is some happy campers!  */
+          tiotptr=tiotptr+tioelngh     /* get next entry             */
+          tioelngh=c2d(stg(tiotptr,1)) /* get entry length           */
+        End
+      answer=''''dsn'('name')'''       /* assume we found it         */
+    End
+Return answer
+
+ptr:  Return c2d(storage(d2x(Arg(1)),4))
+stg:  Return storage(d2x(Arg(1)),Arg(2))
+
+swareq:
+Procedure
+If right(c2x(Arg(1)),1) \= 'F' Then    /* SWA=BELOW ?                */
+  Return c2d(Arg(1))+16                /* yes, return sva+16         */
+svaexit2d(Arg(1))                      /* convert to decimal         */
+tcb = c2d(storage(21c,4))              /* TCB PSATOLD                */
+tcb = ptr(540)                         /* TCB PSATOLD                */
+jscb = ptr(tcb+180)                    /* JSCB TCBJSCB               */
+qmpl = ptr(jscb+244)                   /* QMPL JSCBQMPI              */
+qmat = ptr(qmpl+24)                    /* QMAT QMADD                 */
+Do While sva>65536
+  qmat = ptr(qmat+12)                  /* next QMAT QMAT+12          */
+  sva=sva-65536                        /* 010006F -> 000006F         */
+End
+Return ptr(qmat+sva+1)+16
+/*-------------------------------------------------------------------*/
+/*                      disp_help procedure                          */
+/*-------------------------------------------------------------------*/
+disp_help: procedure
+pgm_name=sysvar("sysicmd")
+if pgm_name="" then pgm_name="VALIDVOL"
+say left(pgm_name,8) "- a REXX exec that will validate a volume serial."
+say ""
+say "Usage: VALIDVOL volser | ? "
+say ""
+say "     volser - Name of the volume serial number to be tested."
+say "     ?      - generates this information."
+say ""
+say "    Return Codes : 0 - valid volume serial number"
+say "                   4 - Help displyed"
+say "                  12 - Invalid volume serial number"
+Say "                  16 - Critical error"
+return
+/*-------------------------------------------------------------------*/
+/*                      GETUCB Procedure                             */
+/*-------------------------------------------------------------------*/
+getucb: PROCEDURE expose x COUNT volser
+   CALL UCBSUBR COUNT,x,"DASD "||volser
+   PARSE VAR RESULT x
+   IF C2X(LEFT(x,2)) = 'FFFF' THEN ,
+      return(8)
+   IF C2X(LEFT(x,2)) = 'FFFE' THEN DO
+      SAY SUBSTR(x,3)
+      return(12)
+   end
+   return 0
+
+/*-------------------------------------------------------------------*/
+/*                      trap NOVALUE condition                       */
+/*-------------------------------------------------------------------*/
+novalue:
+say 'NOVALUE entered from line' sigl
+say condition("D")
+say 'The instruction is suppressed'
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                        trap HALT condition                        */
+/*-------------------------------------------------------------------*/
+halt:
+say 'HALT acknowledged in line' sigl
+say 'Cleanup processing in progress'
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                          End of VALIDVOL                          */
+/*-------------------------------------------------------------------*/

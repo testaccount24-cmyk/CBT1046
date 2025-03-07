@@ -1,0 +1,225 @@
+/* Rexx */
+Say 'You are about to extract the package GENPREP.'
+say '     Reply Y to continue. Any other response to terminate'
+pull ans
+upper ans
+s = userid()
+if ans <> 'Y' then exit
+say ' Lets go then.....'
+askover:
+say ' Enter the HLQ to use. Default is your own userid i.e. 's
+pull hlq
+hlq = strip(hlq)
+if hlq = '' then hlq = s
+upper hlq
+if length(hlq) > 8 then do
+   say 'HLQ is too long. Please re-enter'
+   signal askover
+end
+if datatype(hlq) = "NUM" then do
+   say 'Invalid HLQ cannot be numeric. Please re-enter'
+   signal askover
+end
+askvol:
+say 'Volume serial to install GENPREP on.'
+say '(Leave blank to use a default volume)'
+pull vol
+vol = strip(vol)
+if vol <> '' then do
+   validvol vol
+   if rc <> 0 then do
+      say 'Invalid volume serial number. Please re-enter'
+      signal askvol
+   end
+end
+upper vol
+If vol <> '' then vol = 'VOLUME('vol')'
+else vol = ''
+say 'HLQ to use:' hlq
+say 'VOL to use:' vol
+say ' '
+say 'Please do NOT try to reply to any prompts after this one'
+say ' '
+say  'OK to continue? (Y or N)'
+pull go
+upper go
+if go = 'Y' then do
+Call Doit REXX s hlq vol
+Call Doit ISPPLIB s hlq vol
+Call Doit ISPMLIB s hlq vol
+Call Doit LOADLIB s hlq vol
+  if sysvar('sysispf') <> 'ACTIVE' then do
+  say 'Success!'
+  say
+  say 'Please read the $$INSTAL member to find instructions on how'
+  say 'to complete the installation of &&PACK$$'
+  say
+  say 'Enjoy!'
+  end
+  else do
+      parse source a b c d e
+      mydsn = SUBWORD(e,1,1)
+      member = '$$INSTAL'
+      Call Showit Mydsn member
+      member = '$$$INDEX'
+      Call Showit Mydsn member
+      member = '$$CHANGE'
+      Call Showit Mydsn member
+      member = '$$INFO'
+      Call Showit Mydsn member
+  end
+end
+exit
+doit: Procedure
+parse upper arg file s hlq vol
+newstack
+queue "dsn('"hlq".GENPREP."file"')" vol
+x = PROMPT("ON")
+Address TSO
+      "RECEIVE USERID("s")" ,
+              "INDSNAME('ABBYDALE.GENPREP.PDS("file")')"
+delstack
+return
+Showit: Procedure
+parse upper arg mydsn member
+TrapON=OutTrap('ON')
+stat = SYSDSN(''''mydsn'('member')''')
+TrapON=OutTrap('OFF')
+if stat = "OK" then do
+   Address ISPEXEC "Browse dataset('"mydsn"("member")')"
+end
+return
+Validvol: Procedure
+valid = 8                        /* Set default return code */
+parse upper arg volser
+if volser = "" then do
+   do while volser = ""
+   Say 'Enter volser to validate. (use <QUIT> to terminate)'
+   parse upper pull volser
+   if volser = '<QUIT>' then exit
+   if LENGTH(volser) <> 6 then do
+      volser = ""
+      say 'Invalid volume serial number length. Re-enter'
+   end
+   end
+end
+if volser = "?" then do
+   call disp_help
+   exit(4)
+end
+if LENGTH(volser) <> 6 then do
+   say 'Invalid volume serial number length'
+   exit(valid)
+end
+MyDsn=finddsn()
+If pos('(',MyDsn)>0 then Do
+   MyDsn = SubStr(MyDsn,2,pos('(',MyDsn)-2)
+end
+TrapON=OutTrap('ON')
+"ALLOC F(ASLTEMP) DATASET('"userid()".ASLTEMP')" ,
+       "NEW VOL("volser") UNIT(SYSALLDA)",
+       "LIKE('"mydsn"') SPACE(1)"
+valid = rc
+if valid = 0 then do
+   "FREE F(ASLTEMP)"
+   "DEL '"userid()".ASLTEMP'"
+end
+TrapON=OutTrap('OFF')
+exit(valid)
+finddsn:
+Procedure
+answer='* UNKNOWN *'                   /* assume disaster            */
+Parse Source . . name dd ds .          /* get known info             */
+Call listdsi(dd 'FILE')                /* get 1st ddname from file   */
+Numeric digits 10                      /* allow up to 7FFFFFFF       */
+If name = '?' Then                     /* if sequential exec         */
+  answer=''''ds''''                    /* use info from parse source */
+Else                                   /* now test for members       */
+  If sysdsn(''''sysdsname'('name')''')='OK' Then /* if in 1st ds     */
+    answer=''''sysdsname'('name')'''   /* go no further              */
+  Else                                 /* hooboy! Lets have some fun!*/
+    Do                                 /* scan tiot for the ddname   */
+      tiotptr=24+ptr(12+ptr(ptr(ptr(16)))) /* get ddname array       */
+      tioelngh=c2d(stg(tiotptr,1))     /* nength of 1st entry        */
+      Do Until tioelngh=0 | tioeddnm = dd /* scan until dd found     */
+        tioeddnm=strip(stg(tiotptr+4,8)) /* get ddname from tiot     */
+        If tioeddnm <> dd Then         /* if not a match             */
+          tiotptr=tiotptr+tioelngh     /* advance to next entry      */
+        tioelngh=c2d(stg(tiotptr,1))   /* length of next entry       */
+      End
+      If dd=tioeddnm Then              /* if we found it, loop through
+                                          the data sets doing an swareq
+                                          for each one to get the
+                                          dsname                     */
+        Do Until tioelngh=0 | stg(4+tiotptr,1)<> " "
+          tioejfcb=stg(tiotptr+12,3)
+          jfcb=swareq(tioejfcb)        /* convert SVA to 31-bit addr */
+          dsn=strip(stg(jfcb,44))      /* dsname JFCBDSNM            */
+          vol=storage(d2x(jfcb+118),6) /* volser JFCBVOLS (not used) */
+          If sysdsn(''''dsn'('name')''')='OK' Then /* found it?      */
+            Leave                      /* we is some happy campers!  */
+          tiotptr=tiotptr+tioelngh     /* get next entry             */
+          tioelngh=c2d(stg(tiotptr,1)) /* get entry length           */
+        End
+      answer=''''dsn'('name')'''       /* assume we found it         */
+    End
+Return answer
+
+ptr:  Return c2d(storage(d2x(Arg(1)),4))
+stg:  Return storage(d2x(Arg(1)),Arg(2))
+
+swareq:
+Procedure
+If right(c2x(Arg(1)),1) \= 'F' Then    /* SWA=BELOW ?                */
+  Return c2d(Arg(1))+16                /* yes, return sva+16         */
+svaexit2d(Arg(1))                      /* convert to decimal         */
+tcb = c2d(storage(21c,4))              /* TCB PSATOLD                */
+tcb = ptr(540)                         /* TCB PSATOLD                */
+jscb = ptr(tcb+180)                    /* JSCB TCBJSCB               */
+qmpl = ptr(jscb+244)                   /* QMPL JSCBQMPI              */
+qmat = ptr(qmpl+24)                    /* QMAT QMADD                 */
+Do While sva>65536
+  qmat = ptr(qmat+12)                  /* next QMAT QMAT+12          */
+  sva=sva-65536                        /* 010006F -> 000006F         */
+End
+Return ptr(qmat+sva+1)+16
+/*-------------------------------------------------------------------*/
+/*                      disp_help procedure                          */
+/*-------------------------------------------------------------------*/
+disp_help: procedure
+pgm_name=sysvar("sysicmd")
+if pgm_name="" then pgm_name="VALIDVOL"
+say left(pgm_name,8) "- a REXX exec that will validate a volume serial."
+say ""
+say "Usage: VALIDVOL volser | ? "
+say ""
+say "     volser - Name of the volume serail number to be tested."
+say "     ?      - generates this information."
+say ""
+say "    Return Codes : 0 - valid volume serial number"
+say "                   4 - Help displyed"
+say "                  12 - invalid volume serial number"
+Say "                  16 - Critical error"
+return
+/*-------------------------------------------------------------------*/
+/*                      trap NOVALUE condition                       */
+/*-------------------------------------------------------------------*/
+novalue:
+say 'NOVALUE entered from line' sigl
+say condition("D")
+say 'The instruction is suppressed'
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                        trap HALT condition                        */
+/*-------------------------------------------------------------------*/
+halt:
+say 'HALT acknowledged in line' sigl
+say 'Cleanup processing in progress'
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                          End of VALIDVOL                          */
+/*-------------------------------------------------------------------*/

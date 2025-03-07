@@ -1,0 +1,20 @@
+*---------------------------------------------------------------------*
+*               Directory list of ABBYDALE.GENPREP.REXX               *
+*---------------------------------------------------------------------*
+|  Member  | Description                                              |
+*---------------------------------------------------------------------*
+| $$$INDEX | This member.                                             |
+*---------------------------------------------------------------------*
+| CHECKDSN | Checks for the existance of a dataset                    |
+*---------------------------------------------------------------------*
+| FINDMOD  | Locates a load module. Returns condition code 0 if found |
+*---------------------------------------------------------------------*
+| GENPREP  | This is the main exec used for calling ISPPPREP          |
+*---------------------------------------------------------------------*
+| MEMMATCH | Checks a PDS for a given member or member pattern        |
+*---------------------------------------------------------------------*
+| VALIDVOL | Checks to see the a volser is valid and online.          |
+|          | This call UCBSUBR if it is installed.                    |
+*---------------------------------------------------------------------*
+|                 ©Copyright of Abbydale Systems LLC.                 |
+*---------------------------------------------------------------------*

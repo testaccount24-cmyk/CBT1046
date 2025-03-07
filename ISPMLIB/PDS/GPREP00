@@ -1,0 +1,2 @@
+GPREP001  'Invalid option' .ALARM = YES
+'Please specify either a "/" or leave blank'

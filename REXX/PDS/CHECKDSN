@@ -1,0 +1,171 @@
+/* rexx */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/*                       REXX Exec : CHECKDSN                        */
+/*                                                                   */
+/*  Description : Check the dataset name format and if it isn't a    */
+/*                a new dataset, check to see if it exists.          */
+/*                                                                   */
+/*  Created on : 27 Jul 2017                                         */
+/*  Created by : Kevin Ferguson                                      */
+/*             : Userid(MIT001)                                      */
+/*             : using ABBYDALE.PROD.REXX(CHECKDSN)                  */
+/*                                                                   */
+/*  Called by : Various Execs                                        */
+/*                                                                   */
+/*  Calls :  SYSDSN                                                  */
+/*                                                                   */
+/*  Change Activity :                                                */
+/*                                                                   */
+/*  MM/DD/YYYY  ID   Comment                                         */
+/*  ---------------------------------------------------------------  */
+/*  08/14/2023  VOL  Added ability to check uncatalogued datasets    */
+/*  07/14/2023  ZER  Added check of empty member name                */
+/*  05/15/2021  DSF  Changed code to support RC 12 for 'Not Found'   */
+/*                   Corrected help information                      */
+/*                                                                   */
+/*                ©Copyright of Abbydale Systems LLC.                */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
+pee = ''
+/*signal on novalue         un-initialized vars*/
+rc = 8                 /* Set default of invalid */
+new = 'n'              /* Set default            */
+help = 'n'             /* Set default            */
+member = ''            /* set default            */
+forbid = '*%@!&^}{Ý_¨:,;' /* characters forbidden in dataset name */
+parse upper arg dsname new
+if dsname = "?" then do
+   call disp_help
+   exit(4)
+end
+dsnmax = 44
+if pos('(',dsname) > 0 then do
+   if pos(')',dsname) < pos('(',dsname) then do
+      say dsname ' - Invalid member specification'
+      exit(8)
+   end
+   /* dsnmax = dsnmax + 10 */
+   len = (pos(')',dsname) - pos('(',dsname) ) - 1
+   if len > 8 then do
+      say dsname ' - Invalid member specification'
+      exit(8)
+   end
+   if len = 0 then do                                            /*ZER*/
+      say dsname ' - Invalid member specification'               /*ZER*/
+      exit(8)                                                    /*ZER*/
+   end                                                           /*ZER*/
+   member = substr(dsname,pos('(',dsname)+1,len)
+   dsname = substr(dsname,1,pos('(',dsname)-1)
+end
+else do
+   forbid = forbid||')('
+end
+dsname  = strip(dsname,B,"'")
+if LENGTH(dsname) > dsnmax then do
+   say dsname ' - Length error > 'dsnmax
+   exit(8)
+end
+x = 1
+do until x = LENGTH(forbid)
+   if POS(SUBSTR(forbid,x,1),dsname) > 0 then do
+   say dsname ' - Invalid character in name 'SUBSTR(forbid,x,1)
+   exit(8)
+   end
+   x = x + 1
+end                           /* Do end */
+hit = 'n'             /* Set period hit indicator */
+done = 'n'            /* Set get out variable     */
+workname = dsname
+len = LENGTH(dsname)
+do until done = 'y'
+   if pos('.',workname) = 0 then do
+      done = 'y'
+      if len > 8 then do
+         say dsname ' - Qualifier length error'
+         exit(8)
+      end
+      end
+   else do
+    if pos('.',workname) > 9 then do
+        say dsname ' - Qualifier length error'
+        exit(8)
+    end
+    /*   Check first character of the level */
+    if substr(workname,1,1) > 'Z' then do
+        say dsname ' - Invalid first character 'substr(workname,1,1)
+        exit(8)
+    end
+    if substr(workname,1,1) < 'A' then do
+        say dsname ' - Invalid first character 'substr(workname,1,1)
+        exit(8)
+    end
+    len = len - pos('.',workname)
+    workname = substr(workname,pos('.',workname)+1,len)
+   end
+end
+/*   Check last level for first character */
+if substr(workname,1,1) > 'Z' then do
+    say dsname ' - Invalid first character 'substr(workname,1,1)
+    exit(8)
+end
+if substr(workname,1,1) < 'A' then do
+    say dsname ' - Invalid first character 'substr(workname,1,1)
+    exit(8)
+end
+if words(new) > 1 then do
+   if word(1,new) = "n" then do
+      vol = word(2,new)
+   end
+   else do
+   end
+end
+if new <> 'n' then do
+   if member <> '' then do
+      dsname = dsname||'('||member||')'
+   end
+   TrapON=OutTrap('ON')
+   DSN_STATUS = SYSDSN("'"dsname"'")
+   TrapON=OutTrap('OFF')
+   if DSN_STATUS = 'OK' then do
+      rc = 0
+   end
+   else do
+  /*  say dsname ' - Dataset not found'         */
+      rc = 12   /* Indicate dataset not found */                /*DSF*/
+   end
+end
+exit rc
+/*-------------------------------------------------------------------*/
+/*                      disp_help procedure                          */
+/*-------------------------------------------------------------------*/
+disp_help: procedure
+say "CHECKDSN - a REXX exec to check the dsname format."
+say ""
+say "Usage: CHECKDSN dsname new | ? "
+say ""
+say "     dsname - Specified the name of the module to locate."
+say "     new    - (optional). If anything is passed as a second"
+say "              parameter then the dataset is assumed to be going"
+say "              to be created so just the format is checked"
+say "     ?      - generates this information."
+say ""
+say "    Return Codes : 0 - Dataset name is valid"              /*DSF*/
+say "                   4 - Help displayed"
+say "                   8 - Invalid dataset name"               /*DSF*/
+Say "                  12 - Dataset name valid but not found"   /*DSF*/
+Say "                  16 - Critical error"
+return
+/*-------------------------------------------------------------------*/
+/*                      Trap NOVALUE Condition                       */
+/*-------------------------------------------------------------------*/
+novalue:
+say "NOVALUE entered from line" sigl
+say condition("D")
+say "The instruction is suppressed"
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                          End of CHECKDSN                          */
+/*-------------------------------------------------------------------*/
