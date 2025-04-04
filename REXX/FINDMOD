@@ -1,0 +1,226 @@
+/* rexx */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/*                        REXX Exec : FINDMOD                        */
+/*                                                                   */
+/*  Description : Searches STEPLIB, LPALIST and LINKLIST (in that    */
+/*                order), for a module name passed as a parameter.   */
+/*                                                                   */
+/*  Created on : 9 Jan 2006                                          */
+/*  Created by : Kevin Ferguson                                      */
+/*             : Userid(MIT001)                                      */
+/*             : using ABBYDALE.PROD.REXX(FINDMOD)                   */
+/*                                                                   */
+/*  Called by : XMITTER, XMITBAT                                     */
+/*                                                                   */
+/*  Calls :  LISTALC                                                 */
+/*                                                                   */
+/*  Return Codes : 0 - Module located                                */
+/*                 4 - Help displyed                                 */
+/*                 8 - Module not found                              */
+/*                16 - Critical error                                */
+/*                                                                   */
+/*  Change Activity :                                                */
+/*                                                                   */
+/*                ©Copyright of Abbydale Systems LLC.                */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
+pee = ''
+signal on novalue                /* un-initialized vars */
+signal on halt                   /* attention key       */
+dsn = ""
+found = "n"
+parse upper arg module show
+help = "n"
+if module = "" then do
+   do while module = ""
+   Say 'Enter module to find (use <QUIT> to terminate)'
+   parse upper pull module
+   if module = '<QUIT>' then exit
+   if LENGTH(module) > 8 then do
+      module = ""
+      say 'Module name Length error. Re-enter'
+   end
+   end
+   show = "b"
+end
+if module = "?" then do
+   call disp_help
+   exit(4)
+end
+Hit1 = "N"
+X=Outtrap('Hline.')
+Address TSO "LISTALC SY ST"
+X=Outtrap('OFF')
+Do I=2 to Hline.0
+  If Left(Hline.I,2)='  ' then do
+    X=Substr(Hline.I,3,8)
+    If Left(X,1)<>' ' then do
+      ddn = Strip(x)
+      if ddn = "STEPLIB" then hit1 = "Y"
+      if ddn <> "STEPLIB" then hit1 = "N"
+    end
+    If Left(Dsn,1)='*' Then Iterate
+    If Left(Dsn,9)='TERMFILE ' Then Iterate
+    If LEFT(Dsn,9)='NULLFILE ' Then Iterate
+  end
+  else do
+    if hit1 = "Y" then do
+       i = i - 2
+       dsn=Hline.I
+       i = i + 2
+  address ISPEXEC "LMINIT DATAID(RES) DATASET('"dsn"') ENQ(SHR)"
+  if rc <> 0 then say 'LMINIT error' zerrlm
+  address ISPEXEC "LMOPEN DATAID("RES") OPTION(INPUT)"
+  if rc <> 0 then say 'LMOPEN error' zerrlm
+  address ISPEXEC "LMMFIND DATAID("RES") MEMBER("module")"
+  if rc = 0 then do
+     if show <> "" then do
+     say 'found' module 'in 'ddn dsn
+     end
+     found = "y"
+  end
+  address ISPEXEC "LMCLOSE DATAID("RES")"
+  address ISPEXEC "LMFREE DATAID("RES")"
+  if found = "y" then exit
+    end
+  end
+End
+ddn = "LPALIST"
+address "TSO"
+numeric digits 10
+cvt_ptr=get_ptr(10,)
+cvtn     = c2d(storage(10,4))      /* address of cvt */
+ecvt_ptr=get_ptr(cvt_ptr,'8c')     /* address of ecvt */
+mcvt_ptr=get_ptr(cvt_ptr,'4ac')    /* address of cvtsmext */
+plps_ptr=get_ptr(mcvt_ptr,'38')    /* address of cvteplps */
+lpa_header = get_data(plps_ptr,'0',4)
+lpa_count = get_data(plps_ptr,'4',4)
+next_entry = d2x(x2d(plps_ptr) + 8)
+lpa_entries = c2d(get_data(plps_ptr,4,4))
+do i = 1 to lpa_entries
+  entry_size   = 44
+  entry_dsn    = get_data(next_entry,1,entry_size)
+  entry_dsn    = strip(entry_dsn)
+  address ISPEXEC "LMINIT DATAID(RES) DATASET('"entry_dsn"') ENQ(SHR)"
+  if rc <> 0 then say 'LMINIT error' zerrlm
+  address ISPEXEC "LMOPEN DATAID("RES") OPTION(INPUT)"
+  if rc <> 0 then say 'LMOPEN error' zerrlm
+  address ISPEXEC "LMMFIND DATAID("RES") MEMBER("module")"
+  if rc = 0 then do
+     if show <> "" then do
+     say 'found' module 'in 'ddn entry_dsn
+     end
+     found = "y"
+  end
+  address ISPEXEC "LMCLOSE DATAID("RES")"
+  address ISPEXEC "LMFREE DATAID("RES")"
+  if found = "y" then exit
+  next_entry = d2x(x2d(next_entry) + entry_size + 1)
+end
+ddn = "LINKLIST"
+lnk_ptr=get_ptr(cvt_ptr,'4dc')     /* point to linklist */
+next_entry = d2x(x2d(lnk_ptr) + 8)
+x = 'n'
+do until x = 'y'
+  entry_size   = get_ptr(next_entry,0)
+  entry_dsn    = get_data(next_entry,1,44)
+  if entry_size = '80808080' then
+          x = 'y'
+  else
+          do
+  next_entry = d2x(x2d(next_entry) + 45)
+  entry_dsn = strip(entry_dsn)
+  address ISPEXEC "LMINIT DATAID(RES) DATASET('"entry_dsn"') ENQ(SHR)"
+  if rc <> 0 then say 'LMINIT error' zerrlm
+  address ISPEXEC "LMOPEN DATAID("RES") OPTION(INPUT)"
+  if rc <> 0 then say 'LMOPEN error' zerrlm
+  address ISPEXEC "LMMFIND DATAID("RES") MEMBER("module")"
+  if rc = 0 then do
+     if show <> "" then do
+     say 'found' module 'in 'ddn entry_dsn
+     end
+     found = "y"
+  end
+  address ISPEXEC "LMCLOSE DATAID("RES")"
+  address ISPEXEC "LMFREE DATAID("RES")"
+  if found = "y" then exit
+  end
+end
+if found = "Y" then do
+   rc = 0
+   end
+   else do
+   rc = 8
+   if show <> "" then do
+      say 'Module 'module 'not found'
+   end
+end
+exit rc
+/*-------------------------------------------------------------------*/
+/*                       get_ptr procedure                           */
+/*-------------------------------------------------------------------*/
+get_ptr: procedure
+arg addr,offset
+temp=d2x(x2d(addr)+x2d(offset))
+return c2x(storage(temp,4))
+exit
+/*-------------------------------------------------------------------*/
+/*                       get_date procedure                          */
+/*-------------------------------------------------------------------*/
+get_data: procedure
+arg addr,offset,length
+temp=d2x(x2d(addr)+x2d(offset))
+return storage(temp,length)
+exit
+/*-------------------------------------------------------------------*/
+/*                      disp_help procedure                          */
+/*-------------------------------------------------------------------*/
+disp_help: procedure
+pgm_name=sysvar("sysicmd")
+if pgm_name="" then pgm_name="name"
+say left(pgm_name,8) "- a REXX exec that will locate a load module."
+say ""
+say "Usage: FINDMOD module list | ? "
+say ""
+say "     module - Specifies the name of the module to locate."
+say "     list   - (optional). If anything is passed as a second"
+say "              parameter then a message is displayed showing"
+say "              which library the module was found in."
+say "     ?      - generates this information."
+say ""
+say "    The search order is:"
+say "       STEPLIB"
+say "       LPALIST"
+say "       LINKLIST"
+say ""
+say "    The exec will stop searching once it finds the "
+say "    specified module."
+say ""
+say "    Return Codes : 0 - Module located"
+say "                   4 - Help displayed"
+say "                   8 - Module not found"
+Say "                  16 - Critical error"
+return
+/*-------------------------------------------------------------------*/
+/*                      trap NOVALUE condition                       */
+/*-------------------------------------------------------------------*/
+novalue:
+say 'NOVALUE entered from line' sigl
+say condition("D")
+say 'The instruction is suppressed'
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                        trap HALT condition                        */
+/*-------------------------------------------------------------------*/
+halt:
+say 'HALT acknowledged in line' sigl
+say 'Cleanup processing in progress'
+address "TSO"
+"delstack"
+exit(16)
+/*-------------------------------------------------------------------*/
+/*                          End of FINDMOD                           */
+/*-------------------------------------------------------------------*/

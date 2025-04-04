@@ -1,0 +1,28 @@
+    ISPPREP Clarification
+Subject:  ISPPREP Clarification
+From:     Kevin Ferguson <Kevin.E.Ferguson@hotmail.com>
+Date:     9/11/2023, 10:23 PM
+To:       Sam Golob <sbgolob@cbttape.org>
+
+Hi Sam
+
+I just wanted to clarify the difference between FILE1008 and
+FILE1046
+
+File1008 is a fix to the IBM panel that saves the input and
+output dataset names that were last used in the TSO profile.
+
+File1046 is a whole different approach to prepping panels in that
+it allows generic member names to be used and several other means
+of filtering members to be processed. For example you could prep
+all panels whose names start with CBT by coding CBT* as the
+member name. You can also limit the members to be processed to
+only those last updated by a particular userid.
+
+Both files can be put on independent of the other. They are not
+codependent in any way.
+
+Hope this helps.
+
+Kevin Ferguson
+

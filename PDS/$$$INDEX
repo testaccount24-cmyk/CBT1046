@@ -1,0 +1,51 @@
+*---------------------------------------------------------------------*
+*               Directory list of ABBYDALE.TESTKSDS.PDS               *
+*---------------------------------------------------------------------*
+|  Member  | Description                                              |
+*---------------------------------------------------------------------*
+| $$$INDEX | This member.                                             |
+*---------------------------------------------------------------------*
+| $$INFO   | Information about the Rexx exec.                         |
+*---------------------------------------------------------------------*
+| $$INSTAL | How to complete the instalation of GENPREP and make it   |
+|          | available to users.                                      |
+*---------------------------------------------------------------------*
+| COPYRITE | Copyright information for GENPREP.                       |
+*---------------------------------------------------------------------*
+| DISCLAIM | Disclaimer information for GENPREP.                      |
+*---------------------------------------------------------------------*
+| ISPMLIB  | This is a TRANSMIT files for the message library used by |
+|          | GENPREP. This will be automatically RECEIVE'd by the     |
+|          | UNPACK member.                                           |
+*---------------------------------------------------------------------*
+| ISPPLIB  | This is a TRANSMIT files for the panel library used by   |
+|          | TESTKSDS. This will be automatically RECEIVE'd by the    |
+|          | UNPACK member.                                           |
+*---------------------------------------------------------------------*
+| LOADLIB  | This is a TRANSMIT files for the load library containing |
+|          | the UCBSUBR program from file 634 of the CBT tape.       |
+|          | Abbydale Systems LLC does not claim any ownership of     |
+|          | the UCBSUBR program. The source is available in this     |
+|          | dataset as member UCBSUBR.                               |
+*---------------------------------------------------------------------*
+| PDF      | A PDF copy of the "Using GENPREP" document. This should  |
+|          | be copied to a PC using binary file transfer.            |
+*---------------------------------------------------------------------*
+| README   | This is the member that describes the information on how |
+|          | to run the UNPACK exec contained within this dataset.    |
+*---------------------------------------------------------------------*
+| REXX     | This is a TRANSMIT files for the Rexx library used by    |
+|          | GENPREP. This will be automatically RECEIVE'd by the     |
+|          | UNPACK member.                                           |
+*---------------------------------------------------------------------*
+| UCBSUBR  | This is the source code for UCBSUBR from the CBT tape    |
+|          | file 634. The program was not written by Abbydale        |
+|          | Systems LLC and we accept no resonsibility for any       |
+|          | future updates nor do we claim ownership of it.          |
+|          |      (It is pretty neat though!)                         |
+*---------------------------------------------------------------------*
+| UNPACK   | This is the UNPACK exec that unpacks the datasets that   |
+|          | will RECEIVE the required datasets.                      |
+*---------------------------------------------------------------------*
+|                 ©Copyright of Abbydale Systems LLC.                 |
+*---------------------------------------------------------------------*

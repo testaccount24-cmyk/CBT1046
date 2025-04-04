@@ -1,0 +1,145 @@
+/* rexx */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/*                       REXX Exec : MEMMATCH                        */
+/*                                                                   */
+/*  Description : Checks a passed PDS and member name for existance  */
+/*                Member name can be for a generic name i.e. ASL*    */
+/*                                                                   */
+/*             *** Must run under ISPF for LM calls ***              */
+/*                                                                   */
+/*  Created on : 1 Aug 2023                                          */
+/*  Created by : Kevin Ferguson                                      */
+/*             : Userid MIT001                                       */
+/*             : Using ABBYDALE.PROD.REXX(MEMMATCH)                  */
+/*                                                                   */
+/*  Call Format : MEMMATCH dsn member  (both dsn and member are      */
+/*                                      required)                    */
+/*                                                                   */
+/*  Return Codes :   0 - Member or generic members found in dsn      */
+/*                   8 - Member or generic members not found in dsn  */
+/*                  12 - Dataset not found or not partitioned        */
+/*                  16 - Invalid call                                */
+/*                  20 - Invalid volume passed                       */
+/*                                                                   */
+/*  Called by : XMT                                                  */
+/*                                                                   */
+/*  Calls : LISDSI, CheckDSN                                         */
+/*                                                                   */
+/*  Panels Used : None                                               */
+/*                                                                   */
+/*  Change Activity :                                                */
+/*                                                                   */
+/*  MM/DD/YYYY  ID   Comment                                         */
+/*  ---------------------------------------------------------------  */
+/*  08/14/2023  VOL  Added the ability to test in uncatalogued       */
+/*                   datasets. (GENPREP)                             */
+/*                                                                   */
+/*                ©Copyright of Abbydale Systems LLC.                */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
+Parse Arg dsname
+dialogid = sysvar(sysicmd)
+parse source Exec_String
+excnme = word(Exec_String,3)
+If SYSVAR("SYSISPF")<>"ACTIVE" then do
+   Say "ISPF must be active to use "excnme
+   exit(16)
+end
+If ARG() > 1 then exit(16)
+If ARG() = 0 then exit(16)
+member = ARG(1)
+dsn = ""
+If POS(" ",ARG(1)) > 0 then do
+   member = Substr(ARG(1),POS(" ",ARG(1))+1)
+   dsn = Substr(ARG(1),1,POS(" ",ARG(1))-1)
+end
+If POS(",",ARG(1)) > 0 then do
+   member = Substr(ARG(1),POS(",",ARG(1))+1)
+   dsn = Substr(ARG(1),1,POS(",",ARG(1))-1)
+end
+vol = ""                                                         /*VOL*/
+check = "Y"                                                      /*VOL*/
+If POS(" ",member) > 0 then do                                   /*VOL*/
+   vol = Substr(member,POS(" ",member)+1)                        /*VOL*/
+   member = Substr(member,1,POS(" ",member)-1)                   /*VOL*/
+end                                                              /*VOL*/
+If POS(",",member) > 0 then do                                   /*VOL*/
+   vol = Substr(member,POS(",",member)+1)                        /*VOL*/
+   member = Substr(member,1,POS(",",member)-1)                   /*VOL*/
+end                                                              /*VOL*/
+If POS(" ",vol) > 0 then do                                      /*VOL*/
+   chk = Substr(vol,POS(" ",vol)+1)                              /*VOL*/
+   vol = Substr(vol,1,POS(" ",vol)-1)                            /*VOL*/
+end                                                              /*VOL*/
+If POS(",",vol) > 0 then do                                      /*VOL*/
+   chk = Substr(vol,POS(",",vol)+1)                              /*VOL*/
+   vol = Substr(vol,1,POS(",",vol)-1)                            /*VOL*/
+end                                                              /*VOL*/
+if vol <> "" then do                                             /*VOL*/
+   if chk <> "NOVOLCHECK" then do                                /*VOL*/
+      validvol vol                                               /*VOL*/
+      if rc > 0 then do                                          /*VOL*/
+         say 'Invalid volume' vol                                /*VOL*/
+         Exit(20)                                                /*VOL*/
+      end                                                        /*VOL*/
+   end                                                           /*VOL*/
+end                                                              /*VOL*/
+member = Strip(member,b," ")
+forbid = '%!&^}{Ý_¨:,;()'   /* characters forbidden in member name */
+forbid2 = '1234567890'      /* Invalid first characters */
+if POS(SUBSTR(member,1,1),forbid2) > 0 then do
+   say 'Invalid member name'
+   exit(16)
+end
+x = 1
+do until x = LENGTH(forbid)
+   if POS(SUBSTR(forbid,x,1),member) > 0 then do
+      Say 'Invalid member name'
+      exit(16)
+   end
+   x = X + 1
+end
+if length(member) > 8 then exit(12)
+if Length(dsn) = 0 then exit(12)
+ivol = ""                                                        /*VOL*/
+if vol <> "" then do                                             /*VOL*/
+   ivol = "VOLUME("vol")"                                        /*VOL*/
+end                                                              /*VOL*/
+dsn = strip(dsn,b," ")
+parse upper var dsn
+parse upper var member
+TrapON=OutTrap('ON')
+DSN_STATUS = LISTDSI(''''dsn'''' ivol smsinfo)                   /*VOL*/
+TrapON=OutTrap('OFF')
+if substr(sysdsorg,1,2) <> "PO" then do
+   say 'Dataset 'dsn 'not partitioned'
+   exit(12)
+end
+if sysdsorg = "" then do                                         /*VOL*/
+   say 'Dataset 'dsn 'not found'                                 /*VOL*/
+   exit(8)                                                       /*VOL*/
+end                                                              /*VOL*/
+if ivol = "" then do                                             /*VOL*/
+   checkdsn dsn vol
+   if rc > 0 then do
+      if rc = 12 then do
+         say 'dataset 'dsn 'not found'
+      end
+      else do
+         say 'dataset name is in error'
+      end
+      exit(12)
+   end
+end                                                              /*VOL*/
+ISPEXEC "LMINIT DATAID(MCH) DATASET('"dsn"')" ivol "ENQ(SHR)"    /*VOL*/
+ISPEXEC "LMOPEN DATAID("MCH") OPTION(INPUT)"
+ISPEXEC "LMMLIST DATAID("MCH") MEMBER(lst) OPTION(LIST),
+         STATS(YES) PATTERN("member")"
+if rc > 0 then exit(8)
+ISPEXEC "LMCLOSE DATAID("MCH")"
+ISPEXEC "LMFREE DATAID("MCH")"
+exit(0)
+/*-------------------------------------------------------------------*/
+/*                          End of MEMMATCH                          */
+/*-------------------------------------------------------------------*/

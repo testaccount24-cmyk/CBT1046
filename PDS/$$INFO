@@ -1,0 +1,34 @@
+                     GENPREP Rexx Exec Information
+                     -----------------------------
+
+GENPREP is facility that can be used to prepare panels using ISPPREP. 'Prep'ed
+panels load a little bit quicker than normal panels and are also more secure
+for distribution as they are more difficult to change.
+
+GENPREP is based on the IBM ISPPREP panel but with additional functions added.
+These functions provide more flexibily in the selection criteria.
+
+Additional functions include:
+
+1) The ability to select panels by generic member names i.e. ASL*
+2) The ability to select panels by last updated by userid.
+3) The ability to trace the actions.
+3) The ability to see a log of the actions taken.
+
+You can also rename the panels in the output library by using a generic output
+member name. This generic MUST be the same length as a generic input member
+name. i.e. If Input member=ASL* and Output member=OLD* then all members in the
+input dataset that start with ASL will be converted/prepped into the output
+dataset and the names will start the OLD
+
+Like the IBM facility the statistics can be copied across with the panels
+and you can choose to overwrite an existing member or not.
+
+*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+*-*                           NOTE                                  *-*
+*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+
+ It is recommended that you retain the original panel definition in a
+ safe place as currently there is no way of reversing a compiled panel
+ from a prepped library.
+
